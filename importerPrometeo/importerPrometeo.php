@@ -15,6 +15,16 @@ register_deactivation_hook( __FILE__, 'funcion_desactivacion_importerPrometeo' )
 add_action( 'wp_insert_post', 'publish_post_importerPrometeo', 10, 1 );
 add_action('admin_menu', 'importer_prometeo_plugin_menu');
 
+add_action( 'admin_print_scripts', 'integracion_modal_scripts' );
+function integracion_modal_scripts() {
+   wp_enqueue_script( 'integracion-modal-script', plugins_url('scripts.js', __FILE__), array( 'jquery', 'inline-edit-post' ), '', true );
+   wp_localize_script('integracion-modal-script', 'integracionModalScript', array(
+    'pluginsUrl' => plugins_url(),
+    'urlBase' => get_site_url(),
+    ));
+}
+add_action('wp_ajax_showModalIntegrador', 'showModalIntegrador');
+
 function importer_prometeo_plugin_menu() {
     add_menu_page('Integracion_Prometeo',       //Título de la página
         'Integracion Prometeo',                   //Título del menú
@@ -131,6 +141,8 @@ if(!class_exists('ImporterPrometeoIntegradores')) {
     }
 
     function importacionInicial(){
+      $oknoticia = true;
+      $okevento = true;
       set_time_limit(0);
       global $wpdb;
       $posts = get_posts();
@@ -138,7 +150,9 @@ if(!class_exists('ImporterPrometeoIntegradores')) {
       foreach ($posts as $post) {
         $postSincronizado = $wpdb->get_row('SELECT * FROM '. $wpdb->prefix . 'sw_posts_sincronizados WHERE post_id='.$post->ID);
         if(empty($postSincronizado) && $post->post_status=="publish"){
-          $this->integrarNoticia($post,$idCategoryNotices);
+          if($oknoticia){
+            $oknoticia = $this->integrarNoticia($post,$idCategoryNotices);
+          }else $this->integrarNoticia($post,$idCategoryNotices);
         }
       }
 
@@ -150,9 +164,14 @@ if(!class_exists('ImporterPrometeoIntegradores')) {
       foreach ($events->posts as $post) {
         $postSincronizado = $wpdb->get_row('SELECT * FROM '. $wpdb->prefix . 'sw_posts_sincronizados WHERE post_id='.$post->ID);
         if(empty($postSincronizado) && $post->post_status=="publish"){
-          $this->integrarEvento($post);
+          if($okevento){
+            $okevento = $this->integrarEvento($post);
+          }else $this->integrarEvento($post);
         }
       }
+      if($oknoticia && $okevento){
+          return true;
+      }else return false;
     }
 
     function integrarNoticia($post, $idCategoryNotices){
@@ -259,25 +278,45 @@ if(!class_exists('ImporterPrometeoIntegradores')) {
   }
 }
 
-
+function showModalIntegrador() {
+  $importer = new ImporterPrometeoIntegradores;
+  if($importer->importacionInicial()){
+    echo 1;
+  }else {
+    echo 0;
+  }
+}
 
 /*Función para construir la página de configuración del plugin*/
 function integracion_prometeo_page_setting() {
   ?>
-
   <div style="padding: 50px;">
     <h3>INTEGRACIÓN DE LOS EVENTOS, NOTICIAS Y ENTRADAS <br/> CON LA PLATAFORMA DE PROMETEO</h3>
-    <form  method='POST'>
-      <input type="submit" class="button action" style="background-image: linear-gradient(#5aa1d8, #2489d6);color: white;" name="integPrometeo" value="INTEGRAR">
-    </form>
+      <input type="button" onclick="clickIntegrar();" class="button action" style="background-image: linear-gradient(#5aa1d8, #2489d6);color: white;" name="integPrometeo" value="INTEGRAR">
   </div>
 
-  <?php
-}
+<div id="ventanaCargando" style="position: fixed; width: 320px; height: 100px; top: 0; left: 0; border: #333333 1px solid; background-color: #FAFAFA; display:none;">
+<br/>
+<br/>
+&nbsp;&nbsp;Se está realizando la integración....<br/>
+&nbsp;&nbsp;No cierre la ventana hasta que se haya completado.
+</div>
 
-if (isset($_POST['integPrometeo']) && $_SERVER['REQUEST_METHOD']=="POST"){
-  $importer = new ImporterPrometeoIntegradores;
-  $importer->importacionInicial();
+<div id="miVentanaOK" style="position: fixed; width: 300px; height: 100px; top: 0; left: 0; border: #333333 1px solid; background-color: #FAFAFA; display:none;">
+<button type="button" onclick="ocultarVentana('miVentanaOK');">&times;</button>
+<br/>
+<br/>
+&nbsp;&nbsp;La integración se ha realizado correctamente.
+</div>
+
+<div id="miVentanaERROR" style="position: fixed; width: 300px; height: 100px; top: 0; left: 0; border: #333333 1px solid; background-color: #FAFAFA; display:none;">
+<button type="button" onclick="ocultarVentana('miVentanaERROR');">&times;</button>
+<br/>
+<br/>
+&nbsp;&nbsp;Ha ocurrido un error en la importación de alguna noticia o evento.
+</div>
+
+  <?php
 }
 
 ?>
