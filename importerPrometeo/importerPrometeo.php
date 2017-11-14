@@ -44,10 +44,27 @@ function funcion_activacion_importerPrometeo() {
       PRIMARY KEY (post_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8;";
 
+  $create_table_user = "
+    CREATE TABLE IF NOT EXISTS {$wpdb->prefix}sw_usuario_prometeo (
+      `user` VARCHAR(255) NOT NULL,
+      `pass` VARCHAR(255) NOT NULL,
+      PRIMARY KEY (user)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8;";
+
     require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
 
     dbDelta( $create_table );
+    dbDelta( $create_table_user );
 
+    $wpdb->insert($wpdb->prefix.'sw_usuario_prometeo', array( 
+    'user' => "", 
+    'pass' => ""
+     ), 
+    array( 
+        '%s', '%s'
+    ));
+
+    showModalIntegrador();
 }
 
 function funcion_desactivacion_importerPrometeo() {
@@ -75,9 +92,18 @@ function publish_post_importerPrometeo($post_id){
 
 if(!class_exists('ImporterPrometeoIntegradores')) {
   class ImporterPrometeoIntegradores {
-    public $user = 'INTRODUCEUSER';
-    public $password = 'INTRODUCEPASSWORD';
+    public $user = '';
+    public $password = '';
     public $urlBaseApi = 'http://prometeoemprende.es';
+
+    function __construct() {
+      global $wpdb;
+      $usuarioPrometeo = $wpdb->get_row('SELECT * FROM '. $wpdb->prefix . 'sw_usuario_prometeo');
+      if($usuarioPrometeo!=null){
+        $this->user = $usuarioPrometeo->user;
+        $this->password = $usuarioPrometeo->pass;
+      }
+    }
 
     function addNotice($title, $content,$category) {
       $data = array(
@@ -101,7 +127,6 @@ if(!class_exists('ImporterPrometeoIntegradores')) {
 
       $url = $this->urlBaseApi.'/wp-json/wp/v2/posts';
       $response = wp_remote_post( $url, $args );
-
       if(!is_wp_error( $response ) && $response['response']['code']=="201" && !empty($response['body'])){
         $post = json_decode($response['body'], TRUE);
         return $post;
@@ -191,12 +216,12 @@ if(!class_exists('ImporterPrometeoIntegradores')) {
       }
       if($result!=null){
         $wpdb->insert( $wpdb->prefix . 'sw_posts_sincronizados', array( 'post_id' => $post->ID, 'tipo' => $post->post_type, 'fecha' => $post->post_date));
-      }
+        return true;
+      }else return false;
     }
 
     function integrarEvento($post) {
       global $wpdb;
-
       $taxopt = get_option( "evo_tax_meta");
       $Locterms = wp_get_object_terms($post->ID, 'event_location');
       $location_address = '';
@@ -222,7 +247,8 @@ if(!class_exists('ImporterPrometeoIntegradores')) {
       $result = $this->addEvent($post->ID,$post->post_title,$post->post_content,$startDate,$endDate,$allDay,$location_address,$longitude,$latitude,$urlInscripcion);
       if(strpos($result, 'OK') !== false){
         $wpdb->insert( $wpdb->prefix . 'sw_posts_sincronizados', array( 'post_id' => $post->ID, 'tipo' => $post->post_type, 'fecha' => $post->post_date));
-      }
+        return true;
+      }else return false;
     }
 
     function getIDCategoryNotices_old(){
@@ -289,11 +315,28 @@ function showModalIntegrador() {
 
 /*Función para construir la página de configuración del plugin*/
 function integracion_prometeo_page_setting() {
+  global $wpdb;
+  $usuarioPrometeo = $wpdb->get_row('SELECT * FROM '. $wpdb->prefix . 'sw_usuario_prometeo');
   ?>
   <div style="padding: 50px;">
     <h3>INTEGRACIÓN DE LOS EVENTOS, NOTICIAS Y ENTRADAS <br/> CON LA PLATAFORMA DE PROMETEO</h3>
       <input type="button" onclick="clickIntegrar();" class="button action" style="background-image: linear-gradient(#5aa1d8, #2489d6);color: white;" name="integPrometeo" value="INTEGRAR">
   </div>
+  <div style="padding: 0px 50px 30px 50px;"><span style="border-top:1px solid black;"></span></div>
+  <form  method='POST'>
+    <div style="padding: 0px 50px 50px 50px;">
+      <h3>USUARIO Y CONTRASEÑA PROMETEO</h3>
+      <div class="form-group">
+        <label for="user" style="display:table;font-weight: 900;">Usuario</label>
+        <input type="text" class="form-control" id="user" name="user" style="width: 300px;" value=<?php if($usuarioPrometeo!=null){echo $usuarioPrometeo->user;}else echo "";?>>
+      </div>
+      <div class="form-group">
+        <label for="pass" style="display:table;font-weight: 900;">Contraseña</label>
+        <input type="text" class="form-control" id="pass" name="pass" style="width: 300px;" value=<?php if($usuarioPrometeo!=null){echo $usuarioPrometeo->pass;}else echo "";?>>
+      </div>
+    <input type="submit" class="button action" name="saveConfigPrometeo" value="GUARDAR" style="margin-top: 20px;">
+    </div>
+  </form>
 
 <div id="ventanaCargando" style="position: fixed; width: 320px; height: 100px; top: 0; left: 0; border: #333333 1px solid; background-color: #FAFAFA; display:none;">
 <br/>
@@ -318,5 +361,27 @@ function integracion_prometeo_page_setting() {
 
   <?php
 }
+
+
+/**************************** GUARDAR USUARIO Y CONTRASEÑA DE PROMETEO *****************************/
+
+
+if (isset($_POST['saveConfigPrometeo']) && $_SERVER['REQUEST_METHOD']=="POST" && !empty($_POST['user']) && !empty($_POST['pass'])){
+
+    global $wpdb;
+
+    $wpdb->query('TRUNCATE TABLE '.$wpdb->prefix.'sw_usuario_prometeo');
+
+    $wpdb->insert($wpdb->prefix.'sw_usuario_prometeo', array( 
+    'user' => $_POST['user'], 
+    'pass' => $_POST['pass']
+     ), 
+    array( 
+        '%s', '%s'
+    ));
+
+}
+
+/*****************************************************************************************************/
 
 ?>

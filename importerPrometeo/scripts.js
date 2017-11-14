@@ -1,5 +1,3 @@
-
-
 function mostrarVentana(ventana) { 
     console.log("Muestra ventana");
     var v = document.getElementById(ventana);
